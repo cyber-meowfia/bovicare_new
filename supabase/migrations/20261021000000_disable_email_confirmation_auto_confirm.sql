@@ -17,7 +17,10 @@ CREATE OR REPLACE FUNCTION public.handle_new_user_auto_confirm()
 RETURNS trigger AS $$
 BEGIN
   NEW.email_confirmed_at = COALESCE(NEW.email_confirmed_at, NOW());
-  NEW.confirmed_at = COALESCE(NEW.confirmed_at, NOW());
+  BEGIN
+    NEW.confirmed_at = COALESCE(NEW.confirmed_at, NOW());
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

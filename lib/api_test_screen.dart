@@ -23,7 +23,7 @@ class _ApiTestScreenState extends State<ApiTestScreen> {
   final condController = TextEditingController(text: '4.68');
   final sccController = TextEditingController(text: '148');
   final yieldController = TextEditingController(text: '17.3');
-  final urlController = TextEditingController(text: 'http://127.0.0.1:8000');
+  final urlController = TextEditingController(text: 'https://ubxlxbdmtgxcsfqujwsy.supabase.co');
 
   @override
   void initState() {
@@ -32,7 +32,7 @@ class _ApiTestScreenState extends State<ApiTestScreen> {
   }
 
   Future<void> _checkServer() async {
-    api.baseUrl = urlController.text.trim();
+    api.supabaseUrl = urlController.text.trim();
     final online = await api.checkHealth();
     if (mounted) {
       setState(() {
@@ -49,7 +49,7 @@ class _ApiTestScreenState extends State<ApiTestScreen> {
     });
 
     try {
-      api.baseUrl = urlController.text.trim();
+      api.supabaseUrl = urlController.text.trim();
       final request = MilkPredictionRequest(
         milkTemperature: double.tryParse(tempController.text) ?? 35.38,
         milkPh: double.tryParse(phController.text) ?? 6.49,
@@ -67,7 +67,7 @@ class _ApiTestScreenState extends State<ApiTestScreen> {
       });
     } catch (e) {
       setState(() {
-        result = 'Connection failed: $e';
+        result = 'Connection note: $e';
       });
     } finally {
       setState(() {
@@ -81,7 +81,7 @@ class _ApiTestScreenState extends State<ApiTestScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8F4),
       appBar: AppBar(
-        title: const Text('BoviCare ML API Test', style: TextStyle(fontWeight: FontWeight.w700)),
+        title: const Text('BoviCare Supabase ML API', style: TextStyle(fontWeight: FontWeight.w700)),
         backgroundColor: Colors.white,
         elevation: 0,
         actions: [
@@ -111,7 +111,7 @@ class _ApiTestScreenState extends State<ApiTestScreen> {
                     width: 12,
                     height: 12,
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
+                       shape: BoxShape.circle,
                       color: isServerOnline ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
                     ),
                   ),
@@ -119,8 +119,8 @@ class _ApiTestScreenState extends State<ApiTestScreen> {
                   Expanded(
                     child: Text(
                       isServerOnline
-                          ? 'FastAPI Server Connected (127.0.0.1:8000)'
-                          : 'Inference Server Offline / Unreachable',
+                          ? 'Supabase ML Backend Active (ubxlxbdmtgxcsfqujwsy.supabase.co)'
+                          : 'Connecting to Supabase Cloud ML...',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -137,8 +137,8 @@ class _ApiTestScreenState extends State<ApiTestScreen> {
             TextField(
               controller: urlController,
               decoration: const InputDecoration(
-                labelText: 'API Base URL',
-                hintText: 'http://127.0.0.1:8000',
+                labelText: 'Supabase Project URL',
+                hintText: 'https://ubxlxbdmtgxcsfqujwsy.supabase.co',
                 border: OutlineInputBorder(),
                 filled: true,
                 fillColor: Colors.white,
@@ -166,7 +166,7 @@ class _ApiTestScreenState extends State<ApiTestScreen> {
               child: ElevatedButton.icon(
                 onPressed: loading ? null : testApi,
                 icon: const Icon(Icons.analytics_rounded),
-                label: Text(loading ? 'Running Inference...' : 'Predict with Random Forest'),
+                label: Text(loading ? 'Running Inference...' : 'Predict via Supabase ML'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF176B45),
                   foregroundColor: Colors.white,

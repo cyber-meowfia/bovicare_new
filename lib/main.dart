@@ -3877,7 +3877,7 @@ class _AssessPageState extends State<AssessPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Random Forest Milk Sensor Lab',
+                                    'Supabase Cloud Milk ML Lab',
                                     style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w700,
