@@ -43,6 +43,123 @@ const MIME_TYPES = {
   '.svg': 'image/svg+xml'
 };
 
+function evaluateAssessmentPayload(payload, mlResult, hasImage) {
+  const assessmentId = payload.assessment_id || `ASM-${Date.now().toString().slice(-6)}`;
+  const now = new Date().toISOString();
+  const bodyTemp = typeof payload.body_temp === 'number' ? payload.body_temp : parseFloat(payload.body_temp) || 38.6;
+  const udderTemp = payload.udder_temp ? parseFloat(payload.udder_temp) : null;
+  const quarters = Array.isArray(payload.quarters) ? payload.quarters : (payload.quarters ? [payload.quarters] : []);
+  const milkAppearance = payload.milk_appearance || 'Normal';
+  const swelling = payload.swelling || 'None';
+  const cmtScore = payload.cmt_score || 'Negative';
+  const milkingPain = payload.milking_pain || 'None';
+
+  // Evaluate clinical severity based on National Mastitis Council criteria
+  const hasSevereCmt = cmtScore.includes('3+');
+  const hasModCmt = cmtScore.includes('1+') || cmtScore.includes('2+');
+  const hasHighFever = bodyTemp >= 39.5;
+  const hasClots = milkAppearance.includes('Clots') || milkAppearance.includes('Curds') || milkAppearance.includes('Flakes') || milkAppearance.includes('Discolored');
+  const hasSevereSwelling = swelling.includes('Severe') || swelling.includes('Stone-Hard');
+  const hasModSwelling = swelling.includes('Moderate') || swelling.includes('Mild') || swelling.includes('Firmness');
+
+  let clinicalRisk = 'Low';
+  if (hasSevereCmt || (hasHighFever && hasClots) || hasSevereSwelling) {
+    clinicalRisk = 'High';
+  } else if (hasModCmt || hasClots || hasModSwelling || bodyTemp > 39.2 || quarters.length > 0) {
+    clinicalRisk = 'Moderate';
+  }
+
+  // Combined Risk determination
+  let finalRisk = clinicalRisk;
+  let predictionLabel = clinicalRisk === 'High' ? 'Clinical Mastitis Indicated' : (clinicalRisk === 'Moderate' ? 'Borderline / Monitor' : 'Healthy / Normal');
+  let probability = null;
+  let confidence = null;
+  let normalProb = null;
+  let mastitisProb = null;
+
+  if (hasImage && mlResult && mlResult.success) {
+    mastitisProb = mlResult.mastitis_probability ?? null;
+    normalProb = mlResult.normal_probability ?? null;
+    probability = mastitisProb;
+    confidence = mlResult.confidence ?? null;
+
+    // Synthesize image AI + clinical rules:
+    if (mlResult.risk_tier === 'High' || clinicalRisk === 'High') {
+      finalRisk = 'High';
+      predictionLabel = 'Mastitis Indicated';
+    } else if (mlResult.risk_tier === 'Moderate' || clinicalRisk === 'Moderate') {
+      finalRisk = 'Moderate';
+      predictionLabel = 'Borderline / Monitor';
+    } else {
+      finalRisk = 'Low';
+      predictionLabel = 'Healthy / Normal';
+    }
+  }
+
+  // Identify missing information
+  const missingInfo = [];
+  if (!hasImage) {
+    missingInfo.push('Udder / strip-cup photograph was not provided (MobileNetV2 computer vision screening unavailable)');
+  }
+  if (!udderTemp) {
+    missingInfo.push('Udder surface temperature was not recorded');
+  }
+  if (!payload.notes || payload.notes.trim().length === 0) {
+    missingInfo.push('Milking behavior / cluster attachment history was omitted');
+  }
+
+  // Recommendations and follow-up guidance
+  let recommendations = '';
+  let vetFollowup = '';
+  if (finalRisk === 'High') {
+    recommendations = 'Isolate milk from bulk tank discard. Cease mechanical milking on affected quarters. Apply cold compress and prepare for prompt veterinary examination.';
+    vetFollowup = 'Immediate veterinary review required within 12 hours. Do not initiate prescription intramammary antibiotics without licensed veterinary prescription.';
+  } else if (finalRisk === 'Moderate') {
+    recommendations = 'Repeat CMT paddle reaction during the next evening milking. Inspect fore-milk strip-cup closely for fine flakes. Verify milking machine vacuum calibration (42 kPa).';
+    vetFollowup = 'Monitor closely for 24-48 hours. Request clinical tele-triage if swelling hardens or rectal temperature rises above 39.2°C.';
+  } else {
+    recommendations = 'Udder tissue, fore-milk appearance, and physiological measurements within normal baseline. Maintain post-milking teat dip disinfection.';
+    vetFollowup = 'Routine herd surveillance. Re-assess if milk yield drops unexpectedly or behavioral restlessness occurs.';
+  }
+
+  return {
+    success: true,
+    status: hasImage ? 'completed' : 'completed_rules_only',
+    assessment_id: assessmentId,
+    created_at: now,
+    cow_name: payload.cow_name || 'Bovine Patient',
+    cow_tag: payload.cow_tag || 'Tag N/A',
+    prediction: predictionLabel,
+    prediction_label: predictionLabel,
+    risk_category: finalRisk,
+    risk_tier: finalRisk,
+    probability: probability,
+    mastitis_probability: mastitisProb,
+    normal_probability: normalProb,
+    confidence: confidence,
+    model_architecture: hasImage ? 'MobileNetV2 (1.00_224) via ONNX Runtime' : 'Standardized Clinical Rules Engine (NMC / VCI)',
+    model_version: hasImage ? '1.00_224 ONNX' : 'NMC/VCI Standard 2026',
+    model_info: {
+      image_model: hasImage ? 'MobileNetV2 (1.00_224) converted from TFLite 2.21.0 to ONNX' : 'No udder/strip-cup photograph provided',
+      tabular_model_status: 'EfficientNetB0+SVM and XGBoost models are not trained/serialized in this codebase; clinical rules applied based on standardized CMT and vitals'
+    },
+    observations: {
+      body_temp: `${bodyTemp}°C (${bodyTemp > 39.2 ? 'Elevated Fever' : 'Normal'})`,
+      udder_temp: udderTemp ? `${udderTemp}°C` : 'Not recorded',
+      affected_quarters: quarters.length > 0 ? quarters.join(', ') : 'None flagged',
+      milk_appearance: milkAppearance,
+      udder_swelling: swelling,
+      cmt_score: cmtScore,
+      milking_pain: milkingPain,
+      has_image: hasImage
+    },
+    missing_information: missingInfo,
+    recommendations: recommendations,
+    veterinary_followup: vetFollowup,
+    disclaimer: 'Experimental AI screening tool. Assists but does not replace licensed veterinary clinical evaluation. Do not administer prescription drugs based solely on unconfirmed screening output.'
+  };
+}
+
 const server = http.createServer((req, res) => {
   const reqPath = decodeURI(req.url.split('?')[0]);
 
@@ -256,13 +373,14 @@ window.ENV_SUPABASE_ANON_KEY = ${JSON.stringify(supabaseAnonKey)};
     return;
   }
 
-  // Local AI Mastitis Screening Endpoint (Protected, Local MobileNetV2 ONNX Runtime)
-  if (req.method === 'POST' && reqPath === '/api/ai-screen') {
+  // Local AI Mastitis Screening & Assessment Endpoint (Protected, Local MobileNetV2 ONNX Runtime)
+  if (req.method === 'POST' && (reqPath === '/api/ai-screen' || reqPath === '/api/ai-assessment')) {
     let body = '';
     req.on('data', chunk => { body += chunk; });
     req.on('end', () => {
       try {
         const payload = JSON.parse(body || '{}');
+        const hasImage = Boolean(payload.image_base64 || payload.image_path);
         let targetImagePath = '';
 
         if (payload.image_base64) {
@@ -278,24 +396,68 @@ window.ENV_SUPABASE_ANON_KEY = ${JSON.stringify(supabaseAnonKey)};
             return res.end(JSON.stringify({ error: 'Access denied: path outside project' }));
           }
           targetImagePath = resolved;
-        } else {
-          targetImagePath = path.join(PUBLIC_DIR, 'asset', 'images', 'cow_assessment_banner.jpeg');
         }
 
-        const { execFile } = require('child_process');
-        execFile('python3', [path.join(PUBLIC_DIR, 'ml_inference.py'), targetImagePath], (err, stdout) => {
-          // Cleanup temp file if created
-          if (payload.image_base64 && fs.existsSync(targetImagePath)) {
-            try { fs.unlinkSync(targetImagePath); } catch (_) {}
-          }
+        const isFullAssessment = Boolean(
+          payload.cow_id || payload.cow_name || payload.body_temp || payload.cmt_score ||
+          payload.milk_appearance || payload.swelling || payload.quarters
+        );
 
-          if (err) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            return res.end(JSON.stringify({ error: err.message }));
-          }
+        if (hasImage && targetImagePath) {
+          const { execFile } = require('child_process');
+          execFile('python3', [path.join(PUBLIC_DIR, 'ml_inference.py'), targetImagePath], (err, stdout) => {
+            // Cleanup temp file if created
+            if (payload.image_base64 && fs.existsSync(targetImagePath)) {
+              try { fs.unlinkSync(targetImagePath); } catch (_) {}
+            }
+
+            if (err) {
+              if (isFullAssessment) {
+                const fallbackRes = evaluateAssessmentPayload(payload, null, false);
+                fallbackRes.status = 'inference_partial';
+                fallbackRes.error = 'Image screening engine error: ' + err.message;
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify(fallbackRes));
+              }
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              return res.end(JSON.stringify({ error: err.message }));
+            }
+
+            let mlOutput;
+            try {
+              mlOutput = JSON.parse(stdout);
+            } catch (parseErr) {
+              mlOutput = { error: 'Failed to parse inference stdout' };
+            }
+
+            if (isFullAssessment) {
+              const fullResult = evaluateAssessmentPayload(payload, mlOutput, true);
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              return res.end(JSON.stringify(fullResult));
+            }
+
+            // Direct image screening response for backward compatibility
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(stdout);
+          });
+        } else if (isFullAssessment) {
+          // Assessment without image: evaluate defensible clinical rules
+          const rulesResult = evaluateAssessmentPayload(payload, null, false);
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(stdout);
-        });
+          res.end(JSON.stringify(rulesResult));
+        } else {
+          // No image and not full assessment: run fallback image for legacy test compatibility
+          targetImagePath = path.join(PUBLIC_DIR, 'asset', 'images', 'cow_assessment_banner.jpeg');
+          const { execFile } = require('child_process');
+          execFile('python3', [path.join(PUBLIC_DIR, 'ml_inference.py'), targetImagePath], (err, stdout) => {
+            if (err) {
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              return res.end(JSON.stringify({ error: err.message }));
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(stdout);
+          });
+        }
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid JSON payload' }));

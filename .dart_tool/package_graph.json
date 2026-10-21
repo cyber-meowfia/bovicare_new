@@ -9,8 +9,7 @@
       "dependencies": [
         "cupertino_icons",
         "flutter",
-        "http",
-        "tflite_flutter"
+        "http"
       ],
       "devDependencies": [
         "flutter_lints",
@@ -50,17 +49,6 @@
         "http_parser",
         "meta",
         "web"
-      ]
-    },
-    {
-      "name": "tflite_flutter",
-      "version": "0.12.1",
-      "dependencies": [
-        "ffi",
-        "flutter",
-        "path",
-        "plugin_platform_interface",
-        "quiver"
       ]
     },
     {
@@ -189,25 +177,6 @@
       "version": "2.13.1",
       "dependencies": [
         "collection",
-        "meta"
-      ]
-    },
-    {
-      "name": "ffi",
-      "version": "2.2.0",
-      "dependencies": []
-    },
-    {
-      "name": "quiver",
-      "version": "3.2.2",
-      "dependencies": [
-        "matcher"
-      ]
-    },
-    {
-      "name": "plugin_platform_interface",
-      "version": "2.1.8",
-      "dependencies": [
         "meta"
       ]
     },

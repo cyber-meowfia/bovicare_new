@@ -26,14 +26,14 @@ Progress: [███████████████████░] 90% (Ph
 - **MobileNetV2 Label Provenance:** Inverted raw sigmoid output (`P(Mastitis) = 1.0 - normal_prob`) based on training notebook cell 529 (`image_dataset_from_directory` ordered classes: `0 = Mastitis`, `1 = Normal`). Three risk tiers (<0.35 Low, 0.35-0.65 Moderate, >=0.65 High) guide clinical actions with mandatory disclaimers.
 
 ### Pending Todos
-- Plan Phase 5: Implement Clinical Overview analytics and cohort filtering (7d, 30d, 90d, All, cattle vs. buffalo cohorts, PDF/CSV export).
+- Execute Phase 5: Implement Clinical Overview analytics, cohort filtering (7d, 30d, 90d, All, cattle vs. buffalo cohorts), de-clutter observations & symptoms layout, and PDF/CSV export.
 
 ### Blockers/Concerns
-- None. Computer vision model inference verified on both ONNX runtime and mobile TFLite asset.
+- None. Android app packaging remains paused per user directive until explicitly prompted.
 
 ## Session Continuity
 
 Last session: 2026-10-21  
-Stopped at: Phase 4 execution complete and verified (04-VERIFICATION.md passed, 38 smoke test suites passed)  
-Resume file: `.planning/ROADMAP.md`
+Stopped at: Phase 5 discussion completed (05-CONTEXT.md captured)  
+Resume file: `.planning/phases/05-clinical-overview-analytics-and-cohort-filtering/05-CONTEXT.md`
 

@@ -1384,6 +1384,174 @@ async function resolveStorageBucket(primaryBucket, fallbackBucket, mockBuckets) 
 
   console.log('✅ 38. Computer Vision MobileNetV2 AI screening, probability math, endpoint, DOM, trilingual localization, and Flutter models verified.');
 
-  console.log('--- ALL 38 TEST SUITES COMPLETED WITH 100% PASS RATE ---');
+  // 39. Complete Website AI Mastitis Assessment Workflow, Dynamic Results Screen, Model Disclosure, Persistence & Trilingual Verification
+  const {
+    saveAssessmentResultToLocal,
+    getAssessmentResultFromLocal,
+    recordsList
+  } = require('./app.js');
+
+  // 1. Verify Website Assessment Results Modal DOM Elements in index.html
+  const requiredResultModalIds = [
+    'modalAssessmentResult',
+    'resModalTitle',
+    'resAssessmentId',
+    'resTimestamp',
+    'resAnimalTag',
+    'resOutcomeCard',
+    'resRiskBadge',
+    'resPredictionLabel',
+    'resMeterContainer',
+    'resMeterFill',
+    'resProbabilityScore',
+    'resConfidenceScore',
+    'resModelArch',
+    'resStatusPill',
+    'resHeadingObs',
+    'resObsGrid',
+    'resMissingInfoBox',
+    'resMissingList',
+    'resModelDisclosure',
+    'resHeadingRecs',
+    'resRecommendationsText',
+    'resHeadingVetFollowup',
+    'resVetFollowupText',
+    'resDisclaimerText',
+    'resBtnPrint',
+    'resBtnViewRecords',
+    'resBtnClose'
+  ];
+
+  requiredResultModalIds.forEach(id => {
+    assert.strictEqual(indexHtmlAi.includes(`id="${id}"`), true, `index.html must contain #${id}`);
+  });
+
+  // 2. Verify Assessment Results CSS Rules in styles.css
+  const stylesCss39 = fs.readFileSync(path.join(__dirname, 'styles.css'), 'utf8');
+  assert.strictEqual(stylesCss39.includes('.res-outcome-card'), true, 'styles.css must define .res-outcome-card');
+  assert.strictEqual(stylesCss39.includes('.res-outcome-card.low'), true, 'styles.css must define .res-outcome-card.low');
+  assert.strictEqual(stylesCss39.includes('.res-outcome-card.mod'), true, 'styles.css must define .res-outcome-card.mod');
+  assert.strictEqual(stylesCss39.includes('.res-outcome-card.high'), true, 'styles.css must define .res-outcome-card.high');
+  assert.strictEqual(stylesCss39.includes('.res-obs-grid'), true, 'styles.css must define .res-obs-grid');
+  assert.strictEqual(stylesCss39.includes('.btn-assess-result-open'), true, 'styles.css must define .btn-assess-result-open');
+
+  // 3. Verify Trilingual Localization for Results Modal in English, Marathi, Hindi
+  const resultModalI18nKeys = [
+    'resModalTitle',
+    'resLabelOutcomeHeader',
+    'resHeadingObs',
+    'resMissingTitle',
+    'resModelDisclosure',
+    'resHeadingRecs',
+    'resHeadingVetFollowup',
+    'resDisclaimerText',
+    'resBtnPrint',
+    'resBtnViewRecords',
+    'resBtnClose'
+  ];
+
+  ['en', 'mr', 'hi'].forEach(lang => {
+    resultModalI18nKeys.forEach(k => {
+      assert.strictEqual(Boolean(I18N[lang][k]), true, `I18N.${lang} must define result modal key '${k}'`);
+      assert.strictEqual(typeof I18N[lang][k] === 'string' && I18N[lang][k].length > 0, true, `I18N.${lang}.${k} must be a non-empty string`);
+    });
+  });
+
+  // 4. Verify Client-Side Result Persistence Helpers
+  const testAssessmentResult = {
+    assessment_id: 'ASM-TEST-999',
+    timestamp: new Date().toISOString(),
+    cow_name: 'Sundari (#C009)',
+    prediction: 'Clinical Mastitis Indicated',
+    risk_category: 'High',
+    probability: 0.88,
+    confidence: 0.88,
+    model_architecture: 'MobileNetV2 (1.00_224) via ONNX Runtime',
+    observations: {
+      body_temp: '39.8°C',
+      udder_temp: '37.5°C',
+      affected_quarters: 'RF, RR',
+      milk_appearance: 'Clots / Flakes / Curds',
+      udder_swelling: 'Severe & Stone-Hard',
+      cmt_score: '3+'
+    },
+    missing_information: [],
+    recommendations: ['Withhold milk immediately.', 'Notify vet.'],
+    veterinary_followup: 'Urgent examination required within 12 hours.'
+  };
+
+  saveAssessmentResultToLocal(testAssessmentResult);
+  const retrievedResult = getAssessmentResultFromLocal('ASM-TEST-999');
+  assert.strictEqual(retrievedResult !== null, true, 'getAssessmentResultFromLocal must retrieve saved result');
+  assert.strictEqual(retrievedResult.assessment_id, 'ASM-TEST-999', 'Retrieved result ID must match saved result ID');
+  assert.strictEqual(retrievedResult.risk_category, 'High', 'Retrieved result risk must match saved risk');
+
+  // 5. Verify Live Backend AI Assessment Endpoint (Rules-Based & Deep Learning ONNX)
+  // 5a. Clinical Rules (no image)
+  const rulesPayload = {
+    cow_name: 'Laxmi (#C002)',
+    body_temp: 39.7,
+    quarters: ['RF'],
+    milk_appearance: 'Clots / Flakes / Curds',
+    swelling: 'Moderate Swelling',
+    cmt_score: '2+'
+  };
+
+  const rulesResp = await fetch('http://localhost:3000/api/ai-screen', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(rulesPayload)
+  });
+  assert.strictEqual(rulesResp.ok, true, 'POST /api/ai-screen with full assessment payload must return 200 OK');
+  const rulesData = await rulesResp.json();
+  assert.strictEqual(rulesData.success, true, 'Rules-based assessment must succeed');
+  assert.strictEqual(rulesData.status, 'completed_rules_only', 'Status must be completed_rules_only when no image is passed');
+  assert.strictEqual(rulesData.risk_category, 'High', 'Elevated fever + clots + CMT 2+ must classify as High Risk');
+  assert.strictEqual(rulesData.prediction, 'Clinical Mastitis Indicated', 'Prediction must accurately reflect clinical mastitis');
+  assert.strictEqual(rulesData.model_architecture.includes('Clinical Rules Engine'), true, 'Model architecture must truthfully disclose clinical rules engine');
+  assert.strictEqual(rulesData.missing_information.length > 0, true, 'Missing information must disclose lack of image or vitals');
+  assert.strictEqual(rulesData.model_info.tabular_model_status.includes('EfficientNetB0'), true, 'Model info must transparently disclose that EfficientNetB0+SVM and XGBoost are not saved in this repo');
+
+  // 5b. Deep Learning MobileNetV2 ONNX Inference (with image)
+  const bannerImgPath = path.join(__dirname, 'assets', 'images', 'cow_banner.jpeg');
+  const sampleImageBase64 = 'data:image/jpeg;base64,' + fs.readFileSync(bannerImgPath).toString('base64');
+  const dlPayload = {
+    cow_name: 'Gauri (#C001)',
+    body_temp: 38.6,
+    quarters: [],
+    milk_appearance: 'Normal',
+    swelling: 'None',
+    cmt_score: 'Negative',
+    image_base64: sampleImageBase64
+  };
+
+  const dlResp = await fetch('http://localhost:3000/api/ai-screen', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(dlPayload)
+  });
+  assert.strictEqual(dlResp.ok, true, 'POST /api/ai-screen with image must return 200 OK');
+  const dlData = await dlResp.json();
+  assert.strictEqual(dlData.success, true, 'Deep learning assessment must succeed');
+  assert.strictEqual(dlData.status, 'completed', 'Status must be completed when image is processed');
+  assert.strictEqual(typeof dlData.probability, 'number', 'Model probability must be a valid number');
+  assert.strictEqual(dlData.probability >= 0 && dlData.probability <= 1, true, 'Model probability must be in [0, 1]');
+  assert.strictEqual(dlData.model_architecture.includes('MobileNetV2'), true, 'Model architecture must identify MobileNetV2 ONNX');
+
+  // 6. Verify Assessment History Re-opening
+  assert.strictEqual(Array.isArray(recordsList), true, 'recordsList must be an array');
+  const recWithResult = recordsList.find(r => r.screeningResult !== undefined && r.screeningResult !== null);
+  assert.strictEqual(Boolean(recWithResult), true, 'recordsList must contain records with screeningResult attached');
+  assert.strictEqual(recWithResult.screeningResult.assessment_id.length > 0, true, 'Screening result must have an assessment_id');
+
+  // 7. Verify Form Submission & Result Display Wiring in app.js
+  const appJsFull = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+  assert.strictEqual(appJsFull.includes('openAssessmentResultModal(aiResult)'), true, 'submitAssessment must call openAssessmentResultModal(aiResult)');
+  assert.strictEqual(appJsFull.includes('btn-assess-result-open'), true, 'app.js must render .btn-assess-result-open for history reopening');
+  assert.strictEqual(appJsFull.includes('saveAssessmentResultToLocal(aiResult)'), true, 'submitAssessment must persist result via saveAssessmentResultToLocal');
+
+  console.log('✅ 39. Complete Website AI Mastitis Assessment Workflow, Dynamic Results Screen, Model Disclosure, Persistence & Trilingual Verification passed.');
+
+  console.log('--- ALL 39 TEST SUITES COMPLETED WITH 100% PASS RATE ---');
 })();
 

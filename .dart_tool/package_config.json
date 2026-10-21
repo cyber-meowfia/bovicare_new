@@ -44,12 +44,6 @@
       "languageVersion": "3.3"
     },
     {
-      "name": "ffi",
-      "rootUri": "file:///Users/aryanmokal/.pub-cache/hosted/pub.dev/ffi-2.2.0",
-      "packageUri": "lib/",
-      "languageVersion": "3.7"
-    },
-    {
       "name": "flutter",
       "rootUri": "file:///Users/aryanmokal/development/flutter/packages/flutter",
       "packageUri": "lib/",
@@ -128,18 +122,6 @@
       "languageVersion": "3.4"
     },
     {
-      "name": "plugin_platform_interface",
-      "rootUri": "file:///Users/aryanmokal/.pub-cache/hosted/pub.dev/plugin_platform_interface-2.1.8",
-      "packageUri": "lib/",
-      "languageVersion": "3.0"
-    },
-    {
-      "name": "quiver",
-      "rootUri": "file:///Users/aryanmokal/.pub-cache/hosted/pub.dev/quiver-3.2.2",
-      "packageUri": "lib/",
-      "languageVersion": "2.17"
-    },
-    {
       "name": "sky_engine",
       "rootUri": "file:///Users/aryanmokal/development/flutter/bin/cache/pkg/sky_engine",
       "packageUri": "lib/",
@@ -180,12 +162,6 @@
       "rootUri": "file:///Users/aryanmokal/.pub-cache/hosted/pub.dev/test_api-0.7.12",
       "packageUri": "lib/",
       "languageVersion": "3.10"
-    },
-    {
-      "name": "tflite_flutter",
-      "rootUri": "file:///Users/aryanmokal/.pub-cache/hosted/pub.dev/tflite_flutter-0.12.1",
-      "packageUri": "lib/",
-      "languageVersion": "3.3"
     },
     {
       "name": "typed_data",
