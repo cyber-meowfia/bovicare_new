@@ -2180,7 +2180,8 @@ async function triggerAiMastitisScreening(blob) {
           riskTierEl.style.background = '#FDE8E8';
           riskTierEl.style.color = '#9B1C1C';
         } else if (tier === 'Moderate') {
-          riskTierEl.textContent = dict.lblAiRiskMod || 'Moderate Risk (Monitor Foremilk)';
+          const isEarlyMastitis = (result.prediction_label || '').includes('Mastitis');
+          riskTierEl.textContent = isEarlyMastitis ? 'Moderate Risk (Mastitis Indicated)' : (dict.lblAiRiskMod || 'Moderate Risk (Monitor Foremilk)');
           riskTierEl.style.background = '#FEF08A';
           riskTierEl.style.color = '#854D0E';
         } else {
@@ -2202,16 +2203,41 @@ async function triggerAiMastitisScreening(blob) {
       if (recEl) {
         recEl.textContent = result.recommendation || '';
       }
+    } else {
+      const status = result?.status || 'inference_failed';
+      const label = status === 'model_unavailable' ? 'Model Unavailable' : (status === 'invalid_input' ? 'Invalid Input' : 'Inference Failed');
+      if (riskTierEl) {
+        riskTierEl.textContent = label;
+        riskTierEl.style.background = '#FEE2E2';
+        riskTierEl.style.color = '#991B1B';
+      }
+      if (meterEl) {
+        meterEl.style.width = '0%';
+        meterEl.style.background = '#9CA3AF';
+      }
+      if (confidenceEl) {
+        confidenceEl.textContent = 'N/A';
+      }
+      if (recEl) {
+        recEl.textContent = `Screening notice: ${result?.error || 'AI inference could not be completed.'}`;
+      }
     }
   } catch (err) {
     console.warn('AI screening service notice:', err);
     if (riskTierEl) {
-      riskTierEl.textContent = 'Screening Standby';
-      riskTierEl.style.background = '#F3F4F6';
-      riskTierEl.style.color = '#6B7280';
+      riskTierEl.textContent = 'Inference Offline';
+      riskTierEl.style.background = '#FEE2E2';
+      riskTierEl.style.color = '#991B1B';
+    }
+    if (meterEl) {
+      meterEl.style.width = '0%';
+      meterEl.style.background = '#9CA3AF';
+    }
+    if (confidenceEl) {
+      confidenceEl.textContent = 'Unavailable';
     }
     if (recEl) {
-      recEl.textContent = 'Photo saved for veterinary evaluation. Local inference available upon server connection.';
+      recEl.textContent = 'Could not contact local inference service. Photo attached for veterinary triage.';
     }
   }
 }
@@ -2379,18 +2405,23 @@ async function submitAssessment(e) {
   if (!aiResult) {
     const isAbnormalClinical = swelling !== 'None' || milkAppearance !== 'Normal' || cmtScore !== 'Negative' || quarters.length > 0;
     const generatedId = `ASM-${Date.now().toString().slice(-6)}`;
+    const hasImageProvided = Boolean(currentCompressedImageBlob);
     aiResult = {
       success: true,
-      status: 'rules_fallback',
+      status: hasImageProvided ? 'inference_failed' : 'rules_fallback',
       assessment_id: generatedId,
       timestamp: new Date().toLocaleString(),
       cow_name: `${cow.name} (${cow.tag})`,
-      prediction: isAbnormalClinical ? 'Clinical Mastitis Indicated (Rule-based)' : 'Normal / Low Risk (Rule-based)',
-      prediction_label: isAbnormalClinical ? 'Clinical Mastitis Indicated' : 'Normal / Low Risk',
-      risk_category: isAbnormalClinical ? (swelling.includes('Severe') || bodyTemp > 39.5 ? 'High' : 'Moderate') : 'Low',
-      risk_tier: isAbnormalClinical ? (swelling.includes('Severe') || bodyTemp > 39.5 ? 'High' : 'Moderate') : 'Low',
-      probability: isAbnormalClinical ? 0.72 : 0.14,
-      confidence: 0.75,
+      prediction: hasImageProvided
+        ? (isAbnormalClinical ? 'Clinical Mastitis Indicated (Image Inference Offline)' : 'Image Inference Offline (Clinical Triage Inconclusive)')
+        : (isAbnormalClinical ? 'Clinical Mastitis Indicated (Rule-based)' : 'Normal / Low Risk (Rule-based)'),
+      prediction_label: hasImageProvided
+        ? (isAbnormalClinical ? 'Clinical Mastitis Indicated' : 'Inference Offline')
+        : (isAbnormalClinical ? 'Clinical Mastitis Indicated' : 'Normal / Low Risk'),
+      risk_category: isAbnormalClinical ? (swelling.includes('Severe') || bodyTemp > 39.5 ? 'High' : 'Moderate') : (hasImageProvided ? 'Inconclusive' : 'Low'),
+      risk_tier: isAbnormalClinical ? (swelling.includes('Severe') || bodyTemp > 39.5 ? 'High' : 'Moderate') : (hasImageProvided ? 'Inconclusive' : 'Low'),
+      probability: isAbnormalClinical ? 0.72 : null,
+      confidence: isAbnormalClinical ? 0.75 : null,
       observations: {
         body_temp: `${bodyTemp} °C`,
         udder_temp: udderTemp ? `${udderTemp} °C` : 'Not recorded',
@@ -2400,18 +2431,20 @@ async function submitAssessment(e) {
         cmt_score: cmtScore,
         milking_pain: milkingPain
       },
-      missing_information: [
-        'Inference service was offline or unreachable at submission time; standardized clinical triage rules applied.'
-      ],
-      recommendations: isAbnormalClinical ? [
-        'Isolate milk batch from commercial bulk tank immediately.',
-        'Apply warm compress to affected quarters and contact herd veterinarian.'
-      ] : [
-        'Maintain strict post-milking teat disinfection and sanitary bedding.'
-      ],
+      missing_information: hasImageProvided
+        ? ['Inference service was offline or unreachable at submission time; image could not be verified.']
+        : ['Udder photo was not attached; standardized clinical triage rules applied.'],
+      recommendations: hasImageProvided && !isAbnormalClinical
+        ? ['Image inference service was unreachable. Re-run screening when server is connected or perform physical teat examination.']
+        : (isAbnormalClinical ? [
+            'Isolate milk batch from commercial bulk tank immediately.',
+            'Apply warm compress to affected quarters and contact herd veterinarian.'
+          ] : [
+            'Maintain strict post-milking teat disinfection and sanitary bedding.'
+          ]),
       veterinary_followup: isAbnormalClinical ? 
         'Urgent veterinary consultation recommended within 24 hours.' : 
-        'Continue regular 4-quarter strip cup checks at each milking.',
+        (hasImageProvided ? 'Re-screen photo or consult attending veterinarian.' : 'Continue regular 4-quarter strip cup checks at each milking.'),
       model_info: {
         architecture: 'Standardized Bovine Clinical Rules Engine',
         model_file: 'rules_engine_fallback'
@@ -2603,11 +2636,14 @@ function openAssessmentResultModal(resultOrId) {
   const cardEl = document.getElementById('resOutcomeCard');
   const badgeEl = document.getElementById('resRiskBadge');
   const predEl = document.getElementById('resPredictionLabel');
-  const risk = (result.risk_category || result.risk_tier || 'Low').toLowerCase();
+  const risk = (result.risk_category || result.risk_tier || '').toLowerCase();
+  const isFailedInference = result.status === 'inference_failed' || result.status === 'model_unavailable' || result.status === 'invalid_input' || risk.includes('inconclusive') || risk.includes('fail');
 
   if (cardEl) {
     cardEl.classList.remove('low', 'mod', 'high');
-    if (risk.includes('high')) {
+    if (isFailedInference) {
+      // Neutral warning state without healthy green
+    } else if (risk.includes('high')) {
       cardEl.classList.add('high');
     } else if (risk.includes('mod')) {
       cardEl.classList.add('mod');
@@ -2618,15 +2654,27 @@ function openAssessmentResultModal(resultOrId) {
 
   if (badgeEl) {
     badgeEl.className = 'status-pill-badge';
-    if (risk.includes('high')) {
+    if (isFailedInference) {
       badgeEl.classList.add('to-monitor');
-      badgeEl.textContent = 'High Risk (Clinical Signs)';
+      badgeEl.textContent = result.status === 'model_unavailable' ? 'Model Unavailable' : (result.status === 'invalid_input' ? 'Invalid Input' : 'Inference Failed / Inconclusive');
+      badgeEl.style.background = '#FEE2E2';
+      badgeEl.style.color = '#991B1B';
+    } else if (risk.includes('high')) {
+      badgeEl.classList.add('to-monitor');
+      badgeEl.textContent = 'High Risk (Mastitis Indicated)';
+      badgeEl.style.background = '#FDE8E8';
+      badgeEl.style.color = '#9B1C1C';
     } else if (risk.includes('mod')) {
+      const isEarly = (result.prediction || result.prediction_label || '').includes('Mastitis');
       badgeEl.classList.add('to-monitor');
-      badgeEl.textContent = 'Moderate Risk (Subclinical)';
+      badgeEl.textContent = isEarly ? 'Moderate Risk (Mastitis Indicated)' : 'Moderate Risk (Borderline / Monitor)';
+      badgeEl.style.background = '#FEF08A';
+      badgeEl.style.color = '#854D0E';
     } else {
       badgeEl.classList.add('healthy');
       badgeEl.textContent = 'Low Risk (Healthy)';
+      badgeEl.style.background = '#DEF7EC';
+      badgeEl.style.color = '#03543F';
     }
   }
 
@@ -2640,18 +2688,23 @@ function openAssessmentResultModal(resultOrId) {
   const confScore = document.getElementById('resConfidenceScore');
 
   const probVal = (typeof result.probability === 'number') ? result.probability : ((typeof result.mastitis_probability === 'number') ? result.mastitis_probability : null);
-  const confVal = (typeof result.confidence === 'number') ? result.confidence : 0.85;
+  const confVal = (typeof result.confidence === 'number') ? result.confidence : (isFailedInference ? null : 0.85);
 
   if (probScore) {
-    probScore.textContent = probVal !== null ? `${(probVal * 100).toFixed(1)}%` : 'Clinical Rules';
+    probScore.textContent = isFailedInference ? 'N/A' : (probVal !== null ? `${(probVal * 100).toFixed(1)}%` : 'Clinical Rules');
   }
   if (confScore) {
-    confScore.textContent = `${(confVal * 100).toFixed(1)}%`;
+    confScore.textContent = (confVal !== null && !isFailedInference) ? `${(confVal * 100).toFixed(1)}%` : 'N/A';
   }
   if (meterFill) {
-    const pct = probVal !== null ? Math.max(5, Math.min(100, Math.round(probVal * 100))) : (risk.includes('high') ? 85 : (risk.includes('mod') ? 50 : 15));
-    meterFill.style.width = `${pct}%`;
-    meterFill.style.background = risk.includes('high') ? '#EF4444' : (risk.includes('mod') ? '#F59E0B' : '#10B981');
+    if (isFailedInference) {
+      meterFill.style.width = '0%';
+      meterFill.style.background = '#9CA3AF';
+    } else {
+      const pct = probVal !== null ? Math.max(5, Math.min(100, Math.round(probVal * 100))) : (risk.includes('high') ? 85 : (risk.includes('mod') ? 50 : 15));
+      meterFill.style.width = `${pct}%`;
+      meterFill.style.background = risk.includes('high') ? '#EF4444' : (risk.includes('mod') ? '#F59E0B' : '#10B981');
+    }
   }
 
   // 4. Model Architecture & Status Pill
@@ -2661,7 +2714,12 @@ function openAssessmentResultModal(resultOrId) {
     archEl.textContent = result.model_info?.architecture || result.model_architecture || 'MobileNetV2 (1.00_224) ONNX + Bovine Clinical Rules';
   }
   if (statusPill) {
-    if (result.status === 'success' || result.status === 'completed') {
+    if (isFailedInference) {
+      statusPill.className = 'clinical-chip';
+      statusPill.style.background = '#FEE2E2';
+      statusPill.style.color = '#991B1B';
+      statusPill.textContent = result.status === 'model_unavailable' ? 'Model Unavailable' : 'Inference Failed';
+    } else if (result.status === 'success' || result.status === 'completed') {
       statusPill.className = 'clinical-chip';
       statusPill.style.background = '#DEF7EC';
       statusPill.style.color = '#03543F';

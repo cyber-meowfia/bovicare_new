@@ -1552,6 +1552,71 @@ async function resolveStorageBucket(primaryBucket, fallbackBucket, mockBuckets) 
 
   console.log('✅ 39. Complete Website AI Mastitis Assessment Workflow, Dynamic Results Screen, Model Disclosure, Persistence & Trilingual Verification passed.');
 
-  console.log('--- ALL 39 TEST SUITES COMPLETED WITH 100% PASS RATE ---');
+  // 40. Differential Prediction Verification & Failure State Honesty
+  console.log('--- RUNNING SUITE 40: AI Inference Differential Prediction & Fault Honesty ---');
+  // 40a. Mastitis-positive sample verification
+  const mastitisImgPath = path.join(__dirname, 'WhatsApp Image 2026-10-18 at 00.01.08.jpeg');
+  assert.strictEqual(fs.existsSync(mastitisImgPath), true, 'Mastitis test image WhatsApp Image 2026-10-18 at 00.01.08.jpeg must exist');
+  const mastitisB64 = 'data:image/jpeg;base64,' + fs.readFileSync(mastitisImgPath).toString('base64');
+  
+  const mastitisResp = await fetch('http://localhost:3000/api/ai-screen', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      cow_name: 'Radha (#C101)',
+      body_temp: 38.6,
+      milk_appearance: 'Normal',
+      swelling: 'None',
+      cmt_score: 'Negative',
+      image_base64: mastitisB64
+    })
+  });
+  assert.strictEqual(mastitisResp.ok, true, 'Mastitis sample request must return 200 OK');
+  const mastitisData = await mastitisResp.json();
+  assert.strictEqual(mastitisData.success, true, 'Mastitis inference must report success');
+  assert.strictEqual(mastitisData.prediction_label, 'Mastitis Indicated', 'Positive udder image must be predicted as Mastitis Indicated');
+  assert.strictEqual(mastitisData.risk_tier, 'High', 'Positive udder image must have High risk tier');
+  assert.strictEqual(mastitisData.mastitis_probability > 0.60, true, 'Mastitis probability must be > 60% for clinical mastitis sample');
+
+  // 40b. Healthy / Normal sample verification
+  assert.strictEqual(dlData.prediction_label, 'Healthy / Normal', 'Normal pasture cow banner must be predicted as Healthy / Normal');
+  assert.strictEqual(dlData.risk_tier, 'Low', 'Normal pasture cow banner must have Low risk tier');
+  assert.strictEqual(dlData.mastitis_probability < 0.20, true, 'Mastitis probability must be < 20% for healthy cow sample');
+
+  // 40c. Distinct differential outcome assertion
+  assert.notStrictEqual(mastitisData.prediction_label, dlData.prediction_label, 'AI pipeline MUST differentiate between infected and healthy samples');
+  assert.notStrictEqual(mastitisData.risk_tier, dlData.risk_tier, 'Risk tier MUST differ between infected and healthy samples');
+
+  // 40d. Corrupt image error honesty (Never silently default to Normal)
+  const corruptResp = await fetch('http://localhost:3000/api/ai-screen', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      cow_name: 'TestCow',
+      body_temp: 38.6,
+      milk_appearance: 'Normal',
+      swelling: 'None',
+      cmt_score: 'Negative',
+      image_base64: 'data:image/jpeg;base64,bm90YW5pbWFnZQ=='
+    })
+  });
+  const corruptData = await corruptResp.json();
+  assert.strictEqual(corruptData.status, 'inference_failure', 'Corrupt image must report status: inference_failure');
+  assert.strictEqual(corruptData.risk_category, 'Inconclusive', 'Corrupt image with normal vitals must report Inconclusive risk, NEVER Low/Normal');
+  assert.strictEqual(corruptData.prediction.includes('Inference Failed'), true, 'Prediction must clearly state Inference Failed');
+
+  // 40e. Empty payload rejection
+  const emptyResp = await fetch('http://localhost:3000/api/ai-screen', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+  assert.strictEqual(emptyResp.status, 400, 'Empty payload must return HTTP 400');
+  const emptyData = await emptyResp.json();
+  assert.strictEqual(emptyData.status, 'invalid_input', 'Empty payload must return status: invalid_input');
+
+  console.log('✅ 40. AI Inference Differential Predictions, Mastitis vs Normal, Fault Honesty & Distinct States verified.');
+
+  console.log('--- ALL 40 TEST SUITES COMPLETED WITH 100% PASS RATE ---');
 })();
 

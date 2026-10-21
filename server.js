@@ -76,23 +76,34 @@ function evaluateAssessmentPayload(payload, mlResult, hasImage) {
   let confidence = null;
   let normalProb = null;
   let mastitisProb = null;
+  let status = hasImage ? 'completed' : 'completed_rules_only';
 
-  if (hasImage && mlResult && mlResult.success) {
-    mastitisProb = mlResult.mastitis_probability ?? null;
-    normalProb = mlResult.normal_probability ?? null;
-    probability = mastitisProb;
-    confidence = mlResult.confidence ?? null;
+  if (hasImage) {
+    if (mlResult && mlResult.success) {
+      mastitisProb = mlResult.mastitis_probability ?? null;
+      normalProb = mlResult.normal_probability ?? null;
+      probability = mastitisProb;
+      confidence = mlResult.confidence ?? null;
 
-    // Synthesize image AI + clinical rules:
-    if (mlResult.risk_tier === 'High' || clinicalRisk === 'High') {
-      finalRisk = 'High';
-      predictionLabel = 'Mastitis Indicated';
-    } else if (mlResult.risk_tier === 'Moderate' || clinicalRisk === 'Moderate') {
-      finalRisk = 'Moderate';
-      predictionLabel = 'Borderline / Monitor';
+      // Synthesize image AI + clinical rules:
+      if (mlResult.risk_tier === 'High' || clinicalRisk === 'High') {
+        finalRisk = 'High';
+        predictionLabel = mlResult.risk_tier === 'High' ? (mlResult.prediction_label || 'Mastitis Indicated') : 'Clinical Mastitis Indicated';
+      } else if (mlResult.risk_tier === 'Moderate' || clinicalRisk === 'Moderate') {
+        finalRisk = 'Moderate';
+        predictionLabel = mlResult.prediction_label || (clinicalRisk === 'Moderate' ? 'Borderline / Monitor' : 'Mastitis Indicated (Early/Mild)');
+      } else {
+        finalRisk = 'Low';
+        predictionLabel = 'Healthy / Normal';
+      }
     } else {
-      finalRisk = 'Low';
-      predictionLabel = 'Healthy / Normal';
+      // Image was provided, but ML inference failed or was unavailable!
+      // Do NOT default to Healthy / Normal!
+      status = mlResult?.status || 'inference_failed';
+      finalRisk = clinicalRisk !== 'Low' ? clinicalRisk : 'Inconclusive';
+      predictionLabel = clinicalRisk !== 'Low' 
+        ? `${clinicalRisk === 'High' ? 'Clinical Mastitis Indicated' : 'Borderline / Monitor'} (Image Inference Failed)` 
+        : 'Inference Failed — Unable to Screen Image';
     }
   }
 
@@ -100,6 +111,8 @@ function evaluateAssessmentPayload(payload, mlResult, hasImage) {
   const missingInfo = [];
   if (!hasImage) {
     missingInfo.push('Udder / strip-cup photograph was not provided (MobileNetV2 computer vision screening unavailable)');
+  } else if (!mlResult || !mlResult.success) {
+    missingInfo.push(`Image inference could not complete: ${mlResult?.error || 'ML engine execution failed'}`);
   }
   if (!udderTemp) {
     missingInfo.push('Udder surface temperature was not recorded');
@@ -111,7 +124,10 @@ function evaluateAssessmentPayload(payload, mlResult, hasImage) {
   // Recommendations and follow-up guidance
   let recommendations = '';
   let vetFollowup = '';
-  if (finalRisk === 'High') {
+  if (status === 'inference_failed' || status === 'model_unavailable' || status === 'invalid_input' || finalRisk === 'Inconclusive') {
+    recommendations = 'Image screening could not be verified by the local AI engine. Inspect animal physically for teat hardness, heat, or abnormal foremilk.';
+    vetFollowup = 'Consult herd veterinarian or re-capture a clear, well-lit photograph of the affected teat/quarter.';
+  } else if (finalRisk === 'High') {
     recommendations = 'Isolate milk from bulk tank discard. Cease mechanical milking on affected quarters. Apply cold compress and prepare for prompt veterinary examination.';
     vetFollowup = 'Immediate veterinary review required within 12 hours. Do not initiate prescription intramammary antibiotics without licensed veterinary prescription.';
   } else if (finalRisk === 'Moderate') {
@@ -124,7 +140,7 @@ function evaluateAssessmentPayload(payload, mlResult, hasImage) {
 
   return {
     success: true,
-    status: hasImage ? 'completed' : 'completed_rules_only',
+    status: status,
     assessment_id: assessmentId,
     created_at: now,
     cow_name: payload.cow_name || 'Bovine Patient',
@@ -411,23 +427,32 @@ window.ENV_SUPABASE_ANON_KEY = ${JSON.stringify(supabaseAnonKey)};
               try { fs.unlinkSync(targetImagePath); } catch (_) {}
             }
 
-            if (err) {
-              if (isFullAssessment) {
-                const fallbackRes = evaluateAssessmentPayload(payload, null, false);
-                fallbackRes.status = 'inference_partial';
-                fallbackRes.error = 'Image screening engine error: ' + err.message;
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                return res.end(JSON.stringify(fallbackRes));
-              }
-              res.writeHead(500, { 'Content-Type': 'application/json' });
-              return res.end(JSON.stringify({ error: err.message }));
+            let mlOutput = null;
+            if (stdout) {
+              try {
+                mlOutput = JSON.parse(stdout);
+              } catch (_) {}
             }
 
-            let mlOutput;
-            try {
-              mlOutput = JSON.parse(stdout);
-            } catch (parseErr) {
-              mlOutput = { error: 'Failed to parse inference stdout' };
+            if (err || !mlOutput || !mlOutput.success) {
+              const errStatus = mlOutput?.status || (err ? 'inference_failure' : 'invalid_input');
+              const errMsg = mlOutput?.error || err?.message || 'Inference execution failure';
+
+              if (isFullAssessment) {
+                const failRes = evaluateAssessmentPayload(payload, { success: false, status: errStatus, error: errMsg }, true);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify(failRes));
+              }
+
+              // Direct image screening response for failed inference
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              return res.end(JSON.stringify(mlOutput || {
+                success: false,
+                status: errStatus,
+                error: errMsg,
+                risk_tier: 'Inconclusive',
+                prediction_label: 'Inference Failed'
+              }));
             }
 
             if (isFullAssessment) {
@@ -436,9 +461,9 @@ window.ENV_SUPABASE_ANON_KEY = ${JSON.stringify(supabaseAnonKey)};
               return res.end(JSON.stringify(fullResult));
             }
 
-            // Direct image screening response for backward compatibility
+            // Direct image screening response
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(stdout);
+            res.end(JSON.stringify(mlOutput));
           });
         } else if (isFullAssessment) {
           // Assessment without image: evaluate defensible clinical rules
@@ -446,17 +471,12 @@ window.ENV_SUPABASE_ANON_KEY = ${JSON.stringify(supabaseAnonKey)};
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(rulesResult));
         } else {
-          // No image and not full assessment: run fallback image for legacy test compatibility
-          targetImagePath = path.join(PUBLIC_DIR, 'asset', 'images', 'cow_assessment_banner.jpeg');
-          const { execFile } = require('child_process');
-          execFile('python3', [path.join(PUBLIC_DIR, 'ml_inference.py'), targetImagePath], (err, stdout) => {
-            if (err) {
-              res.writeHead(500, { 'Content-Type': 'application/json' });
-              return res.end(JSON.stringify({ error: err.message }));
-            }
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(stdout);
-          });
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: false,
+            status: 'invalid_input',
+            error: 'No image or assessment payload provided.'
+          }));
         }
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });

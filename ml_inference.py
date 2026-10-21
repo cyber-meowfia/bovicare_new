@@ -10,16 +10,24 @@ import json
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'asset', 'models', 'bovicare_mastitis_model.onnx')
 
 def run_inference(image_path):
-    if not os.path.exists(image_path):
-        return {"error": f"Input image not found at {image_path}"}
+    if not image_path or not os.path.exists(image_path):
+        return {
+            "success": False,
+            "status": "invalid_input",
+            "error": f"Input image not found at {image_path}"
+        }
+
+    if not os.path.exists(MODEL_PATH):
+        return {
+            "success": False,
+            "status": "model_unavailable",
+            "error": f"Model artifact not found at {MODEL_PATH}"
+        }
 
     try:
         import numpy as np
         from PIL import Image
         import onnxruntime as ort
-
-        if not os.path.exists(MODEL_PATH):
-            raise FileNotFoundError(f"Model artifact not found at {MODEL_PATH}")
 
         session = ort.InferenceSession(MODEL_PATH, providers=['CPUExecutionProvider'])
         input_name = session.get_inputs()[0].name
@@ -34,17 +42,22 @@ def run_inference(image_path):
         score = float(raw_output[0][0])
         normal_prob = max(0.0, min(1.0, score))
         mastitis_prob = max(0.0, min(1.0, 1.0 - normal_prob))
-    except Exception:
-        # Graceful fallback simulation when native ML binaries (numpy/PIL/onnxruntime) are not in host Python
-        file_size = os.path.getsize(image_path) if os.path.exists(image_path) else 1000
-        # Deterministic score based on image file size
-        normal_prob = round(0.85 - ((file_size % 100) / 1000.0), 4)
-        mastitis_prob = round(1.0 - normal_prob, 4)
+    except Exception as e:
+        return {
+            "success": False,
+            "status": "inference_failure",
+            "error": f"Inference execution failed: {str(e)}"
+        }
 
+    # Threshold calibration aligned with model training (0.50 decision boundary)
     if mastitis_prob >= 0.65:
         risk_tier = "High"
         pred_label = "Mastitis Indicated"
         rec = "High likelihood of inflammation or clot presence. Isolate milk batch and request veterinary review."
+    elif mastitis_prob >= 0.50:
+        risk_tier = "Moderate"
+        pred_label = "Mastitis Indicated (Early/Mild)"
+        rec = "Elevated mastitis probability (> 50%). Perform CMT test, monitor foremilk closely, and isolate affected quarter."
     elif mastitis_prob >= 0.35:
         risk_tier = "Moderate"
         pred_label = "Borderline / Monitor"
@@ -56,6 +69,7 @@ def run_inference(image_path):
 
     return {
         "success": True,
+        "status": "success",
         "model_architecture": "MobileNetV2 (1.00_224)",
         "output_layer": "Dense(1) + Sigmoid",
         "normal_probability": round(normal_prob, 4),
